@@ -91,16 +91,35 @@ export default function SettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingSave, setPendingSave] = useState<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadConfig();
   }, []);
 
   const loadConfig = async () => {
-    if (!window.api) return;
-    const c = await window.api.config.get();
-    setConfig(c || {});
+    setLoading(true);
+    setLoadError(null);
+    try {
+      if (!window.api) {
+        setLoadError('API bridge not available. Restart the app.');
+        setLoading(false);
+        return;
+      }
+      const c = await window.api.config.get();
+      if (!c || Object.keys(c).length === 0) {
+        setLoadError('Config returned empty. Check config/default.json exists.');
+        setConfig({});
+      } else {
+        setConfig(c);
+      }
+    } catch (err: any) {
+      setLoadError(`Failed to load config: ${err.message || err}`);
+      setConfig({});
+    }
     setModified(false);
+    setLoading(false);
   };
 
   const handleChange = (group: string, field: string, value: any) => {
@@ -148,6 +167,19 @@ export default function SettingsPanel() {
           </button>
         </div>
       </div>
+
+      {loading && (
+        <div style={{ ...styles.confirmBar, borderColor: '#2196f3', background: '#0d47a1' }}>
+          <span style={{ color: '#90caf9' }}>Loading configuration...</span>
+        </div>
+      )}
+
+      {loadError && (
+        <div style={{ ...styles.confirmBar, borderColor: '#f44336', background: '#4a0000' }}>
+          <span style={{ color: '#ef9a9a' }}>{loadError}</span>
+          <button onClick={loadConfig} style={styles.btnSecondary}>Retry</button>
+        </div>
+      )}
 
       {showConfirm && (
         <div style={styles.confirmBar}>
