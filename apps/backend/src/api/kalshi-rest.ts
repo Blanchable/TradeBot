@@ -49,25 +49,43 @@ export class KalshiRestClient {
     this.privateKey = config.apiPrivateKey;
   }
 
-  private async signRequest(
-    method: string,
-    path: string,
-    timestamp: number
-  ): Promise<string> {
-    const message = `${timestamp}${method}${path}`;
+  private loadPrivateKey(): crypto.KeyObject {
+    const trimmed = this.privateKey.trim();
+
+    if (trimmed.includes('-----BEGIN')) {
+      return crypto.createPrivateKey(trimmed);
+    }
+
+    const derBuffer = Buffer.from(trimmed, 'base64');
     try {
-      const key = crypto.createPrivateKey({
-        key: Buffer.from(this.privateKey, 'base64'),
+      return crypto.createPrivateKey({
+        key: derBuffer,
         format: 'der',
         type: 'pkcs8',
       });
-      const signature = crypto.sign(null, Buffer.from(message), key);
-      return signature.toString('base64');
-    } catch {
-      const hmac = crypto.createHmac('sha256', this.privateKey);
-      hmac.update(message);
-      return hmac.digest('base64');
-    }
+    } catch { /* wrap as PEM */ }
+
+    const chunked = trimmed.replace(/(.{64})/g, '$1\n').trim();
+    const pem = `-----BEGIN PRIVATE KEY-----\n${chunked}\n-----END PRIVATE KEY-----`;
+    return crypto.createPrivateKey(pem);
+  }
+
+  private async signRequest(
+    method: string,
+    path: string,
+    timestampMs: number
+  ): Promise<string> {
+    // Kalshi: RSA-PSS, SHA256, salt = hash length
+    const pathNoQuery = path.split('?')[0];
+    const message = `${timestampMs}${method}${pathNoQuery}`;
+    const messageBuffer = Buffer.from(message, 'utf-8');
+    const keyObj = this.loadPrivateKey();
+
+    return crypto.sign('sha256', messageBuffer, {
+      key: keyObj,
+      padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST,
+    }).toString('base64');
   }
 
   private async request<T>(
@@ -77,19 +95,16 @@ export class KalshiRestClient {
     retries = 2
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const timestamp = Math.floor(Date.now() / 1000);
-    const signature = await this.signRequest(method, path, timestamp);
+    const timestampMs = Date.now();
+    const fullPath = '/trade-api/v2' + path;
+    const signature = await this.signRequest(method, fullPath, timestampMs);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'KALSHI-ACCESS-KEY': this.apiKeyId,
       'KALSHI-ACCESS-SIGNATURE': signature,
-      'KALSHI-ACCESS-TIMESTAMP': String(timestamp),
+      'KALSHI-ACCESS-TIMESTAMP': String(timestampMs),
     };
-
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
 
     try {
       const resp = await fetch(url, {

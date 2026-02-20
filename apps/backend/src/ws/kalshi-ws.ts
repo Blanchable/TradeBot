@@ -43,31 +43,39 @@ export class KalshiWsClient extends EventEmitter<WsEvents> {
     return this.lastHeartbeat;
   }
 
+  private loadPrivateKey(): crypto.KeyObject {
+    const trimmed = this.config.apiPrivateKey.trim();
+    if (trimmed.includes('-----BEGIN')) {
+      return crypto.createPrivateKey(trimmed);
+    }
+    const derBuffer = Buffer.from(trimmed, 'base64');
+    try {
+      return crypto.createPrivateKey({ key: derBuffer, format: 'der', type: 'pkcs8' });
+    } catch { /* wrap as PEM */ }
+    const chunked = trimmed.replace(/(.{64})/g, '$1\n').trim();
+    return crypto.createPrivateKey(`-----BEGIN PRIVATE KEY-----\n${chunked}\n-----END PRIVATE KEY-----`);
+  }
+
   async connect(): Promise<void> {
     if (this.ws) this.disconnect();
 
-    const timestamp = Math.floor(Date.now() / 1000);
-    const message = `${timestamp}GET/trade-api/ws/v2`;
-    let signature: string;
+    const timestampMs = Date.now();
+    const wsPath = '/trade-api/ws/v2';
+    const message = `${timestampMs}GET${wsPath}`;
+    const messageBuffer = Buffer.from(message, 'utf-8');
 
-    try {
-      const key = crypto.createPrivateKey({
-        key: Buffer.from(this.config.apiPrivateKey, 'base64'),
-        format: 'der',
-        type: 'pkcs8',
-      });
-      signature = crypto.sign(null, Buffer.from(message), key).toString('base64');
-    } catch {
-      const hmac = crypto.createHmac('sha256', this.config.apiPrivateKey);
-      hmac.update(message);
-      signature = hmac.digest('base64');
-    }
+    const keyObj = this.loadPrivateKey();
+    const signature = crypto.sign('sha256', messageBuffer, {
+      key: keyObj,
+      padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST,
+    }).toString('base64');
 
     const url = this.config.wsUrl;
     const headers: Record<string, string> = {
       'KALSHI-ACCESS-KEY': this.config.apiKeyId,
       'KALSHI-ACCESS-SIGNATURE': signature,
-      'KALSHI-ACCESS-TIMESTAMP': String(timestamp),
+      'KALSHI-ACCESS-TIMESTAMP': String(timestampMs),
     };
 
     this.ws = new WebSocket(url, { headers });

@@ -216,58 +216,52 @@ function saveCredentials(creds: { apiKeyId: string; apiPrivateKey: string; env: 
   writeEnvFile(existing);
 }
 
-// ── Kalshi request signing ───────────────────────────────────────────────────
+// ── Kalshi request signing (RSA-PSS SHA256) ─────────────────────────────────
+
+function loadPrivateKey(privateKeyInput: string): crypto.KeyObject {
+  const trimmed = privateKeyInput.trim();
+
+  // If it's already PEM-formatted
+  if (trimmed.includes('-----BEGIN')) {
+    return crypto.createPrivateKey(trimmed);
+  }
+
+  // Raw base64 -- try PKCS8 DER (Kalshi's download format)
+  const derBuffer = Buffer.from(trimmed, 'base64');
+
+  try {
+    return crypto.createPrivateKey({
+      key: derBuffer,
+      format: 'der',
+      type: 'pkcs8',
+    });
+  } catch { /* not raw DER, wrap as PEM */ }
+
+  // Wrap base64 in PEM armor and try again
+  const chunked = trimmed.replace(/(.{64})/g, '$1\n').trim();
+  const pem = `-----BEGIN PRIVATE KEY-----\n${chunked}\n-----END PRIVATE KEY-----`;
+  return crypto.createPrivateKey(pem);
+}
 
 function signKalshiRequest(
-  privateKeyB64: string,
+  privateKeyInput: string,
   timestampMs: number,
   method: string,
   resourcePath: string
 ): string {
-  // Kalshi signing: sign(timestamp_ms + method + path) with the private key
-  const message = String(timestampMs) + method + resourcePath;
-  const messageBuffer = Buffer.from(message);
+  // Kalshi requires: RSA-PSS, SHA256, salt_length = hash_length (32 bytes)
+  // Message = timestamp_ms + METHOD + path (no query string)
+  const pathNoQuery = resourcePath.split('?')[0];
+  const message = String(timestampMs) + method + pathNoQuery;
+  const messageBuffer = Buffer.from(message, 'utf-8');
 
-  // Try Ed25519 / PKCS8 DER first (Kalshi's newer key format)
-  try {
-    const keyObj = crypto.createPrivateKey({
-      key: Buffer.from(privateKeyB64, 'base64'),
-      format: 'der',
-      type: 'pkcs8',
-    });
-    const sig = crypto.sign(null, messageBuffer, keyObj);
-    return sig.toString('base64');
-  } catch { /* not DER/PKCS8, try next */ }
+  const keyObj = loadPrivateKey(privateKeyInput);
 
-  // Try PEM format (if user pasted a full PEM key)
-  if (privateKeyB64.includes('BEGIN')) {
-    try {
-      const keyObj = crypto.createPrivateKey(privateKeyB64);
-      const sig = crypto.sign(null, messageBuffer, keyObj);
-      return sig.toString('base64');
-    } catch { /* not PEM, try next */ }
-  }
-
-  // Try RSA PKCS8 PEM wrapping
-  try {
-    const pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyB64}\n-----END PRIVATE KEY-----`;
-    const keyObj = crypto.createPrivateKey(pem);
-    const sig = crypto.sign(null, messageBuffer, keyObj);
-    return sig.toString('base64');
-  } catch { /* not RSA PEM, try next */ }
-
-  // Try RSA with SHA256
-  try {
-    const pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyB64}\n-----END PRIVATE KEY-----`;
-    const signer = crypto.createSign('SHA256');
-    signer.update(messageBuffer);
-    return signer.sign(pem, 'base64');
-  } catch { /* try HMAC fallback */ }
-
-  // Fallback: HMAC-SHA256 (some older Kalshi integrations)
-  const hmac = crypto.createHmac('sha256', privateKeyB64);
-  hmac.update(messageBuffer);
-  return hmac.digest('base64');
+  return crypto.sign('sha256', messageBuffer, {
+    key: keyObj,
+    padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+    saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST,
+  }).toString('base64');
 }
 
 // ── IPC Setup ───────────────────────────────────────────────────────────────
