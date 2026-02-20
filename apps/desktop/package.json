@@ -7,7 +7,8 @@
     "dev": "concurrently \"tsc -w --project tsconfig.main.json\" \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc --project tsconfig.main.json && vite build",
     "start": "electron .",
-    "pack": "electron-builder --win",
+    "prepare:backend-runtime": "node -e \"require('fs').rmSync('backend-runtime', { recursive: true, force: true })\" && pnpm --config.node-linker=hoisted --filter @kalshi-bot/backend deploy --prod --legacy backend-runtime",
+    "pack": "pnpm run prepare:backend-runtime && electron-builder --win",
     "lint": "eslint src/",
     "test": "echo no tests yet"
   },
@@ -55,11 +56,11 @@
     ],
     "extraResources": [
       {
-        "from": "../backend/dist",
+        "from": "backend-runtime/dist",
         "to": "backend"
       },
       {
-        "from": "../backend/node_modules",
+        "from": "backend-runtime/node_modules",
         "to": "backend_modules"
       },
       {

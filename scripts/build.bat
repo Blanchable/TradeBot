@@ -48,7 +48,15 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 
-echo [4/4] Creating Windows installer...
+echo [4/5] Preparing backend runtime for installer...
+call pnpm --filter @kalshi-bot/desktop prepare:backend-runtime
+if !errorlevel! neq 0 (
+    echo [FAIL] Backend runtime preparation failed
+    pause
+    exit /b 1
+)
+
+echo [5/5] Creating Windows installer...
 echo.
 
 :: Disable code signing - not needed for personal use
