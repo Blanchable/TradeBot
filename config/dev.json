@@ -1,0 +1,10 @@
+{
+  "kalshi": {
+    "env": "demo",
+    "restBaseUrl": "https://demo-api.kalshi.co/trade-api/v2",
+    "wsUrl": "wss://demo-api.kalshi.co/trade-api/ws/v2"
+  },
+  "telemetry": {
+    "logLevel": "debug"
+  }
+}
