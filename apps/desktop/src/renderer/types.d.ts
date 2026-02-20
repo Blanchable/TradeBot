@@ -1,0 +1,47 @@
+interface Window {
+  api: {
+    bot: {
+      getState: () => Promise<any>;
+      start: () => Promise<any>;
+      pause: () => Promise<any>;
+      stop: () => Promise<any>;
+      flatten: () => Promise<any>;
+      toggleSafeMode: () => Promise<any>;
+    };
+    config: {
+      get: () => Promise<any>;
+      update: (config: any) => Promise<any>;
+      reload: () => Promise<any>;
+    };
+    positions: {
+      list: () => Promise<any[]>;
+      close: (ticker: string) => Promise<any>;
+    };
+    orders: {
+      list: () => Promise<any[]>;
+      cancel: (orderId: string) => Promise<any>;
+    };
+    markets: {
+      list: () => Promise<any[]>;
+    };
+    pnl: {
+      daily: () => Promise<any[]>;
+      equity: () => Promise<any[]>;
+    };
+    trades: {
+      list: () => Promise<any[]>;
+    };
+    health: {
+      status: () => Promise<any>;
+    };
+    logs: {
+      stream: () => Promise<any[]>;
+    };
+    backtest: {
+      run: (params: any) => Promise<any>;
+      status: () => Promise<any>;
+    };
+    openExternal: (url: string) => Promise<void>;
+    on: (channel: string, callback: (...args: any[]) => void) => () => void;
+  };
+}
