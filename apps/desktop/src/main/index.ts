@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
-import { fork, ChildProcess } from 'child_process';
+import { fork, spawn, execSync, ChildProcess } from 'child_process';
 
 // IPC channels inlined to match preload.ts (preload can't import npm packages)
 const CH = {
@@ -107,8 +107,38 @@ let backendPnl: any[] = [];
 let backendLogs: any[] = [];
 let backendReady = false;
 
+function findSystemNode(): string {
+  // Electron's process.execPath is the Electron binary, not Node.
+  // Native modules (better-sqlite3) need the system Node.js.
+  const isWin = process.platform === 'win32';
+  const nodeName = isWin ? 'node.exe' : 'node';
+
+  // Check common paths
+  const tryPaths = [
+    // Check if 'node' is on PATH
+    ...(isWin ? [] : ['/usr/local/bin/node', '/usr/bin/node']),
+  ];
+
+  // Try 'where node' (Windows) or 'which node' (Unix)
+  try {
+    const cmd = isWin ? 'where node' : 'which node';
+    const result = execSync(cmd, { encoding: 'utf-8', timeout: 5000 }).trim();
+    const firstLine = result.split(/\r?\n/)[0].trim();
+    if (firstLine && fs.existsSync(firstLine)) {
+      return firstLine;
+    }
+  } catch { /* not found via which/where */ }
+
+  for (const p of tryPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  // Last resort: use Electron's bundled Node (may fail for native modules)
+  console.warn('[electron-main] System Node.js not found, using Electron node (native modules may fail)');
+  return process.execPath;
+}
+
 function startBackend(): void {
-  // Find the compiled backend entry point
   const candidates = [
     path.join(REPO_ROOT, 'apps', 'backend', 'dist', 'index.js'),
     path.resolve(__dirname, '..', '..', 'backend', 'dist', 'index.js'),
@@ -116,25 +146,45 @@ function startBackend(): void {
   const backendEntry = candidates.find((p) => fs.existsSync(p));
 
   if (!backendEntry) {
-    console.error('[electron-main] Backend not found at:', candidates.join(', '));
-    console.error('[electron-main] Run: pnpm --filter @kalshi-bot/backend build');
+    const msg = `Backend not built. Looked in:\n${candidates.join('\n')}\n\nRun: pnpm --filter @kalshi-bot/backend build`;
+    console.error('[electron-main]', msg);
+    backendLogs.push({ ts: Date.now(), level: 'error', module: 'electron', message: msg });
     return;
   }
 
-  console.log('[electron-main] Starting backend from:', backendEntry);
+  const nodePath = findSystemNode();
+  console.log('[electron-main] Backend entry:', backendEntry);
+  console.log('[electron-main] Node binary:', nodePath);
 
+  // Use fork with explicit execPath to system Node.js
   backendProcess = fork(backendEntry, [], {
+    execPath: nodePath,
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     cwd: REPO_ROOT,
     env: {
       ...process.env,
       NODE_ENV: process.env.NODE_ENV || 'development',
+      ELECTRON_RUN_AS_NODE: '1',
     },
   });
 
-  // Forward backend stdout/stderr to Electron console
-  backendProcess.stdout?.on('data', (d: Buffer) => process.stdout.write(`[backend] ${d}`));
-  backendProcess.stderr?.on('data', (d: Buffer) => process.stderr.write(`[backend] ${d}`));
+  // Capture backend output and push to logs
+  backendProcess.stdout?.on('data', (d: Buffer) => {
+    const line = d.toString().trim();
+    if (line) {
+      console.log(`[backend] ${line}`);
+      backendLogs.push({ ts: Date.now(), level: 'info', module: 'backend', message: line });
+      if (backendLogs.length > 500) backendLogs.shift();
+    }
+  });
+  backendProcess.stderr?.on('data', (d: Buffer) => {
+    const line = d.toString().trim();
+    if (line) {
+      console.error(`[backend-err] ${line}`);
+      backendLogs.push({ ts: Date.now(), level: 'error', module: 'backend', message: line });
+      if (backendLogs.length > 500) backendLogs.shift();
+    }
+  });
 
   backendProcess.on('message', (msg: any) => {
     if (!msg || !msg.type) return;
@@ -177,14 +227,20 @@ function startBackend(): void {
   });
 
   backendProcess.on('error', (err) => {
-    console.error('[electron-main] Backend process error:', err.message);
+    const msg = `Backend process error: ${err.message}`;
+    console.error('[electron-main]', msg);
+    backendLogs.push({ ts: Date.now(), level: 'error', module: 'electron', message: msg });
     backendReady = false;
+    backendState.botState = 'ERROR';
   });
 
-  backendProcess.on('exit', (code) => {
-    console.log('[electron-main] Backend exited with code:', code);
+  backendProcess.on('exit', (code, signal) => {
+    const msg = `Backend exited (code=${code}, signal=${signal})`;
+    console.log('[electron-main]', msg);
+    backendLogs.push({ ts: Date.now(), level: 'error', module: 'electron', message: msg });
     backendReady = false;
     backendProcess = null;
+    backendState.botState = 'ERROR';
   });
 
   // Periodically request fresh data from backend

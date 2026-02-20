@@ -117,15 +117,34 @@ async function handleCommand(msg: any): Promise<void> {
 
 async function main(): Promise<void> {
   logger.info(MODULE, 'Kalshi Trend Trader Bot starting...');
+  logger.info(MODULE, `Process PID: ${process.pid}, Parent PID: ${process.ppid}`);
+  logger.info(MODULE, `IPC available: ${!!process.send}`);
 
-  const config = loadConfig();
+  let config;
+  try {
+    config = loadConfig();
+  } catch (err: any) {
+    logger.error(MODULE, `Config load failed: ${err.message}`);
+    sendToParent({ type: 'error', data: `Config load failed: ${err.message}` });
+    // Use absolute minimum defaults to at least start
+    const { AppConfigSchema } = require('@kalshi-bot/shared');
+    config = AppConfigSchema.parse({
+      kalshi: { env: 'demo', restBaseUrl: 'https://demo-api.kalshi.co/trade-api/v2', wsUrl: 'wss://demo-api.kalshi.co/trade-api/ws/v2', apiKeyId: 'none', apiPrivateKey: 'none' },
+    });
+  }
+
   logger.setLevel(config.telemetry.logLevel);
   logger.info(MODULE, `Environment: ${config.kalshi.env}`);
   logger.info(MODULE, `API Key: ${config.kalshi.apiKeyId ? config.kalshi.apiKeyId.slice(0, 8) + '...' : '(not set)'}`);
 
-  initDb();
-  runMigrations();
-  logger.info(MODULE, 'Database initialized');
+  try {
+    initDb();
+    runMigrations();
+    logger.info(MODULE, 'Database initialized');
+  } catch (err: any) {
+    logger.error(MODULE, `Database init failed: ${err.message}`);
+    sendToParent({ type: 'error', data: `Database init failed: ${err.message}` });
+  }
 
   orchestrator = new Orchestrator(config);
 
