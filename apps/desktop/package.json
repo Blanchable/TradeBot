@@ -53,6 +53,28 @@
       "dist/**/*",
       "node_modules/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "../backend/dist",
+        "to": "backend"
+      },
+      {
+        "from": "../backend/node_modules",
+        "to": "backend_modules"
+      },
+      {
+        "from": "../../packages/shared/dist",
+        "to": "shared"
+      },
+      {
+        "from": "../../config",
+        "to": "config"
+      },
+      {
+        "from": "../../.env.example",
+        "to": ".env.example"
+      }
+    ],
     "directories": {
       "output": "release"
     }

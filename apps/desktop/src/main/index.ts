@@ -38,12 +38,13 @@ let backendProcess: ChildProcess | null = null;
 
 const isDev = !app.isPackaged;
 
-function findRepoRoot(): string {
+// Detect whether running from source repo or installed app
+const isPackaged = app.isPackaged;
+
+function findRepoRoot(): string | null {
   let dir = __dirname;
   for (let i = 0; i < 8; i++) {
-    if (fs.existsSync(path.join(dir, 'config', 'default.json'))) {
-      return dir;
-    }
+    if (fs.existsSync(path.join(dir, 'config', 'default.json'))) return dir;
     const pkgPath = path.join(dir, 'package.json');
     if (fs.existsSync(pkgPath)) {
       try {
@@ -55,16 +56,52 @@ function findRepoRoot(): string {
     if (parent === dir) break;
     dir = parent;
   }
-  return path.resolve(__dirname, '..', '..', '..', '..');
+  return null;
 }
 
 const REPO_ROOT = findRepoRoot();
-const DATA_DIR = path.join(REPO_ROOT, 'data');
-const CONFIG_DIR = path.join(REPO_ROOT, 'config');
-const ENV_PATH = path.join(REPO_ROOT, '.env');
+const RESOURCES_PATH = isPackaged ? (process as any).resourcesPath : null;
+const USER_DATA = app.getPath('userData');
 
-console.log('[electron-main] Repo root:', REPO_ROOT);
+// Resolve paths: prefer repo root (dev), fall back to packaged resources, fall back to userData
+function resolvePath(repoPart: string, resourcePart: string, userDataPart?: string): string {
+  if (REPO_ROOT) {
+    const p = path.join(REPO_ROOT, repoPart);
+    if (fs.existsSync(p) || fs.existsSync(path.dirname(p))) return p;
+  }
+  if (RESOURCES_PATH) {
+    const p = path.join(RESOURCES_PATH, resourcePart);
+    if (fs.existsSync(p) || fs.existsSync(path.dirname(p))) return p;
+  }
+  return path.join(USER_DATA, userDataPart || repoPart);
+}
+
+const DATA_DIR = resolvePath('data', 'data', 'data');
+const CONFIG_DIR = resolvePath('config', 'config', 'config');
+const ENV_PATH = resolvePath('.env', '.env', '.env');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(CONFIG_DIR)) {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  // Copy default config into userData if running from installed app
+  if (RESOURCES_PATH && fs.existsSync(path.join(RESOURCES_PATH, 'config', 'default.json'))) {
+    for (const f of ['default.json', 'dev.json', 'prod.json']) {
+      const src = path.join(RESOURCES_PATH, 'config', f);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(CONFIG_DIR, f));
+    }
+  }
+}
+if (!fs.existsSync(ENV_PATH) && RESOURCES_PATH) {
+  const exSrc = path.join(RESOURCES_PATH, '.env.example');
+  if (fs.existsSync(exSrc)) fs.copyFileSync(exSrc, ENV_PATH);
+}
+
+console.log('[electron-main] Mode:', isPackaged ? 'INSTALLED' : 'DEV');
+console.log('[electron-main] Repo root:', REPO_ROOT || '(not found)');
+console.log('[electron-main] Resources:', RESOURCES_PATH || '(not packaged)');
 console.log('[electron-main] Config dir:', CONFIG_DIR);
+console.log('[electron-main] Data dir:', DATA_DIR);
+console.log('[electron-main] Env path:', ENV_PATH);
 console.log('[electron-main] Config exists:', fs.existsSync(path.join(CONFIG_DIR, 'default.json')));
 
 function createWindow(): void {
@@ -140,8 +177,15 @@ function findSystemNode(): string {
 
 function startBackend(): void {
   const candidates = [
-    path.join(REPO_ROOT, 'apps', 'backend', 'dist', 'index.js'),
+    // Source repo locations
+    ...(REPO_ROOT ? [
+      path.join(REPO_ROOT, 'apps', 'backend', 'dist', 'index.js'),
+    ] : []),
     path.resolve(__dirname, '..', '..', 'backend', 'dist', 'index.js'),
+    // Installed app: backend bundled as extraResource
+    ...(RESOURCES_PATH ? [
+      path.join(RESOURCES_PATH, 'backend', 'index.js'),
+    ] : []),
   ];
   const backendEntry = candidates.find((p) => fs.existsSync(p));
 
@@ -156,15 +200,22 @@ function startBackend(): void {
   console.log('[electron-main] Backend entry:', backendEntry);
   console.log('[electron-main] Node binary:', nodePath);
 
-  // Use fork with explicit execPath to system Node.js
+  // Build NODE_PATH so the backend can find its dependencies in both modes
+  const nodePaths: string[] = [];
+  if (REPO_ROOT) nodePaths.push(path.join(REPO_ROOT, 'node_modules'));
+  if (REPO_ROOT) nodePaths.push(path.join(REPO_ROOT, 'apps', 'backend', 'node_modules'));
+  if (RESOURCES_PATH) nodePaths.push(path.join(RESOURCES_PATH, 'backend_modules'));
+  const nodePathSep = process.platform === 'win32' ? ';' : ':';
+
   backendProcess = fork(backendEntry, [], {
     execPath: nodePath,
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-    cwd: REPO_ROOT,
+    cwd: REPO_ROOT || path.dirname(backendEntry),
     env: {
       ...process.env,
       NODE_ENV: process.env.NODE_ENV || 'development',
       ELECTRON_RUN_AS_NODE: '1',
+      NODE_PATH: nodePaths.join(nodePathSep),
     },
   });
 
