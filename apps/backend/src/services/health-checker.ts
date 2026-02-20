@@ -3,7 +3,6 @@ import * as path from 'path';
 import { HealthStatus, BotState, KILL_SWITCH_FILE } from '@kalshi-bot/shared';
 import { KalshiWsClient } from '../ws/kalshi-ws';
 import { KalshiRestClient } from '../api/kalshi-rest';
-import { CandleBuilder } from '../data/candle-builder';
 import { logger } from '../util/logger';
 
 const MODULE = 'health';

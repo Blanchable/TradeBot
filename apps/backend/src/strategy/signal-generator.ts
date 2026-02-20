@@ -4,7 +4,6 @@ import {
 } from '@kalshi-bot/shared';
 import { computeFeeCentsPerContract, passesMinimumMove } from '@kalshi-bot/shared';
 import { computeIndicators, IndicatorSet } from './indicators';
-import { TradeTape } from '../data/trade-tape';
 import { logger } from '../util/logger';
 
 const MODULE = 'signal-gen';

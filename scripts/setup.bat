@@ -191,10 +191,24 @@ if "%CHOICE%"=="1" (
     echo Building production release...
     echo [OK] Building production >> "%LOG_FILE%"
     cd /d "%ROOT%"
-    call pnpm build
-    if %errorlevel% neq 0 (
-        echo [FAIL] Production build failed
-        echo [FAIL] Production build failed >> "%LOG_FILE%"
+    call pnpm --filter @kalshi-bot/shared build
+    if !errorlevel! neq 0 (
+        echo [FAIL] Shared package build failed
+        echo [FAIL] Shared build failed >> "%LOG_FILE%"
+        pause
+        exit /b 1
+    )
+    call pnpm --filter @kalshi-bot/backend build
+    if !errorlevel! neq 0 (
+        echo [FAIL] Backend build failed
+        echo [FAIL] Backend build failed >> "%LOG_FILE%"
+        pause
+        exit /b 1
+    )
+    call pnpm --filter @kalshi-bot/desktop build
+    if !errorlevel! neq 0 (
+        echo [FAIL] Desktop build failed
+        echo [FAIL] Desktop build failed >> "%LOG_FILE%"
         pause
         exit /b 1
     )
