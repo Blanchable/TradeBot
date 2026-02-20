@@ -16,8 +16,9 @@ const stateColors: Record<string, string> = {
 };
 
 export default function StatusBar({ botState, health }: StatusBarProps) {
-  const wsStatus = health?.wsConnected ? 'Connected' : 'Disconnected';
-  const wsColor = health?.wsConnected ? '#4caf50' : '#f44336';
+  const backendUp = health?.backendReady;
+  const wsStatus = health?.wsConnected ? 'WS Connected' : backendUp ? 'WS Disconnected' : 'Backend Loading...';
+  const wsColor = health?.wsConnected ? '#4caf50' : backendUp ? '#ff9800' : '#888';
 
   return (
     <div style={styles.bar}>

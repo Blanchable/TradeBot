@@ -94,18 +94,109 @@ function createWindow(): void {
   });
 }
 
-function startBackend(): void {
-  const backendEntry = path.resolve(__dirname, '../../backend/dist/index.js');
-  if (isDev) return;
+// Latest state from backend, relayed to renderer on request
+let backendState: any = {
+  botState: 'INIT',
+  health: { wsConnected: false, restAlive: false, botState: 'INIT', uptime: 0 },
+  positions: [],
+};
+let backendOrders: any[] = [];
+let backendMarkets: any[] = [];
+let backendTrades: any[] = [];
+let backendPnl: any[] = [];
+let backendLogs: any[] = [];
+let backendReady = false;
 
-  if (fs.existsSync(backendEntry)) {
-    backendProcess = fork(backendEntry, [], {
-      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-      env: { ...process.env, NODE_ENV: 'production' },
-    });
-    backendProcess.on('error', (err) => console.error('Backend error:', err));
-    backendProcess.on('exit', (code) => console.log('Backend exited:', code));
+function startBackend(): void {
+  // Find the compiled backend entry point
+  const candidates = [
+    path.join(REPO_ROOT, 'apps', 'backend', 'dist', 'index.js'),
+    path.resolve(__dirname, '..', '..', 'backend', 'dist', 'index.js'),
+  ];
+  const backendEntry = candidates.find((p) => fs.existsSync(p));
+
+  if (!backendEntry) {
+    console.error('[electron-main] Backend not found at:', candidates.join(', '));
+    console.error('[electron-main] Run: pnpm --filter @kalshi-bot/backend build');
+    return;
   }
+
+  console.log('[electron-main] Starting backend from:', backendEntry);
+
+  backendProcess = fork(backendEntry, [], {
+    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      NODE_ENV: process.env.NODE_ENV || 'development',
+    },
+  });
+
+  // Forward backend stdout/stderr to Electron console
+  backendProcess.stdout?.on('data', (d: Buffer) => process.stdout.write(`[backend] ${d}`));
+  backendProcess.stderr?.on('data', (d: Buffer) => process.stderr.write(`[backend] ${d}`));
+
+  backendProcess.on('message', (msg: any) => {
+    if (!msg || !msg.type) return;
+
+    switch (msg.type) {
+      case 'ready':
+        backendReady = true;
+        console.log('[electron-main] Backend is ready');
+        break;
+      case 'state':
+        if (msg.data) {
+          backendState = msg.data;
+        }
+        break;
+      case 'positions':
+        backendState.positions = msg.data || [];
+        break;
+      case 'orders':
+        backendOrders = msg.data || [];
+        break;
+      case 'markets':
+        backendMarkets = msg.data || [];
+        break;
+      case 'trades':
+        backendTrades = msg.data || [];
+        break;
+      case 'pnl':
+        backendPnl = msg.data || [];
+        break;
+      case 'logs':
+        backendLogs = msg.data || [];
+        break;
+      case 'signal':
+        console.log('[electron-main] Signal:', msg.data?.ticker, msg.data?.direction);
+        break;
+      case 'error':
+        console.error('[electron-main] Backend error:', msg.data);
+        break;
+    }
+  });
+
+  backendProcess.on('error', (err) => {
+    console.error('[electron-main] Backend process error:', err.message);
+    backendReady = false;
+  });
+
+  backendProcess.on('exit', (code) => {
+    console.log('[electron-main] Backend exited with code:', code);
+    backendReady = false;
+    backendProcess = null;
+  });
+
+  // Periodically request fresh data from backend
+  setInterval(() => {
+    if (backendProcess && backendReady) {
+      sendToBackend({ type: 'get-orders' });
+      sendToBackend({ type: 'get-trades' });
+      sendToBackend({ type: 'get-pnl' });
+      sendToBackend({ type: 'get-logs' });
+      sendToBackend({ type: 'get-markets' });
+    }
+  }, 5000);
 }
 
 // ── Config helpers ──────────────────────────────────────────────────────────
@@ -296,10 +387,15 @@ function signKalshiRequest(
 
 function setupIpc(): void {
   ipcMain.handle(CH.BOT_STATE, async () => {
-    return { state: 'READY', connected: false };
+    return {
+      state: backendState.botState || 'INIT',
+      connected: backendState.health?.wsConnected || false,
+      backendReady,
+    };
   });
 
   ipcMain.handle(CH.BOT_START, async () => {
+    if (!backendReady) return { success: false, error: 'Backend not ready. Wait a moment or rebuild.' };
     sendToBackend({ type: 'start' });
     return { success: true };
   });
@@ -444,19 +540,20 @@ function setupIpc(): void {
     }
   });
 
-  ipcMain.handle(CH.POSITIONS_LIST, async () => []);
-  ipcMain.handle(CH.ORDERS_LIST, async () => []);
-  ipcMain.handle(CH.MARKETS_LIST, async () => []);
-  ipcMain.handle(CH.PNL_DAILY, async () => []);
-  ipcMain.handle(CH.TRADES_LIST, async () => []);
+  ipcMain.handle(CH.POSITIONS_LIST, async () => backendState.positions || []);
+  ipcMain.handle(CH.ORDERS_LIST, async () => backendOrders);
+  ipcMain.handle(CH.MARKETS_LIST, async () => backendMarkets);
+  ipcMain.handle(CH.PNL_DAILY, async () => backendPnl);
+  ipcMain.handle(CH.TRADES_LIST, async () => backendTrades);
 
   ipcMain.handle(CH.HEALTH_STATUS, async () => ({
-    wsConnected: false, restAlive: false, lastWsHeartbeat: 0,
-    lastRestCheck: 0, staleDataTickers: [], killSwitchActive: false,
-    botState: 'INIT', uptime: process.uptime(),
+    ...(backendState.health || {}),
+    botState: backendState.botState || 'INIT',
+    uptime: process.uptime(),
+    backendReady,
   }));
 
-  ipcMain.handle(CH.LOGS_STREAM, async () => []);
+  ipcMain.handle(CH.LOGS_STREAM, async () => backendLogs);
 
   ipcMain.handle('open-external', async (_event, url: string) => {
     shell.openExternal(url);
@@ -464,7 +561,15 @@ function setupIpc(): void {
 }
 
 function sendToBackend(message: any): void {
-  if (backendProcess) backendProcess.send(message);
+  if (backendProcess && backendProcess.connected) {
+    try {
+      backendProcess.send(message);
+    } catch (err: any) {
+      console.error('[electron-main] Send to backend failed:', err.message);
+    }
+  } else {
+    console.warn('[electron-main] Backend not connected, dropping message:', message.type);
+  }
 }
 
 // ── App lifecycle ───────────────────────────────────────────────────────────

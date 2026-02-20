@@ -13,9 +13,13 @@ export default function Controls({ botState, onStateChange }: ControlsProps) {
     setLoading(action);
     try {
       switch (action) {
-        case 'start':
-          await window.api.bot.start();
+        case 'start': {
+          const res = await window.api.bot.start();
+          if (res && !res.success) {
+            alert(res.error || 'Failed to start bot');
+          }
           break;
+        }
         case 'pause':
           await window.api.bot.pause();
           break;
