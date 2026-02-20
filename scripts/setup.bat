@@ -129,24 +129,13 @@ echo.
 echo [6/8] Setting up environment...
 if not exist "%ROOT%\.env" (
     copy "%ROOT%\.env.example" "%ROOT%\.env" >nul
-    echo [INFO] .env file created from template.
-    echo.
-    echo  !! IMPORTANT: You need to add your Kalshi API credentials to .env
-    echo  !! Opening .env file in Notepad for you to edit...
-    echo.
-    start /wait notepad "%ROOT%\.env"
+    echo [OK] .env file created from template
     echo [OK] .env created from template >> "%LOG_FILE%"
 ) else (
     echo [OK] .env file already exists
     echo [OK] .env already exists >> "%LOG_FILE%"
 )
-
-:: Validate required env keys
-findstr /i "KALSHI_API_KEY_ID" "%ROOT%\.env" | findstr /v "your_api_key_here" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [WARN] KALSHI_API_KEY_ID not set in .env - bot will not connect to Kalshi
-    echo [WARN] API key not configured >> "%LOG_FILE%"
-)
+echo [INFO] API credentials can be configured in the app GUI (Settings tab)
 
 :: ----- Step 7: Build shared package and run DB migration -----
 echo.

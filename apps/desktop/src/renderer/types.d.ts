@@ -13,6 +13,11 @@ interface Window {
       update: (config: any) => Promise<any>;
       reload: () => Promise<any>;
     };
+    credentials: {
+      get: () => Promise<{ apiKeyId: string; apiPrivateKey: string; env: string; configured: boolean }>;
+      save: (creds: { apiKeyId: string; apiPrivateKey: string; env: string }) => Promise<{ success: boolean; error?: string }>;
+      test: () => Promise<{ success: boolean; message: string }>;
+    };
     positions: {
       list: () => Promise<any[]>;
       close: (ticker: string) => Promise<any>;

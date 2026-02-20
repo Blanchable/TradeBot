@@ -85,7 +85,11 @@ const SETTINGS_SCHEMA: SettingsGroup[] = [
   },
 ];
 
-export default function SettingsPanel() {
+interface SettingsPanelProps {
+  onOpenCredentials?: () => void;
+}
+
+export default function SettingsPanel({ onOpenCredentials }: SettingsPanelProps) {
   const [config, setConfig] = useState<any>({});
   const [modified, setModified] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -154,6 +158,11 @@ export default function SettingsPanel() {
       <div style={styles.header}>
         <h3 style={styles.title}>Configuration</h3>
         <div style={styles.actions}>
+          {onOpenCredentials && (
+            <button onClick={onOpenCredentials} style={styles.btnCredentials}>
+              API Credentials
+            </button>
+          )}
           <button onClick={loadConfig} style={styles.btnSecondary}>Reset</button>
           <button
             onClick={() => handleSave(false)}
@@ -365,6 +374,16 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   checkbox: { cursor: 'pointer' },
+  btnCredentials: {
+    padding: '6px 16px',
+    background: '#1a237e',
+    border: '1px solid #3f51b5',
+    borderRadius: 4,
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   btnPrimary: {
     padding: '6px 16px',
     background: '#1565c0',

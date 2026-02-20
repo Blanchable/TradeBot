@@ -8,6 +8,7 @@ import MarketMonitor from './components/MarketMonitor';
 import TradesPanel from './components/TradesPanel';
 import SettingsPanel from './components/SettingsPanel';
 import LogsViewer from './components/LogsViewer';
+import CredentialSetup from './components/CredentialSetup';
 
 type TabId = 'dashboard' | 'positions' | 'orders' | 'markets' | 'trades' | 'settings' | 'logs';
 
@@ -25,6 +26,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [botState, setBotState] = useState<string>('INIT');
   const [health, setHealth] = useState<any>(null);
+  const [showCredentialSetup, setShowCredentialSetup] = useState(false);
+  const [checkedCreds, setCheckedCreds] = useState(false);
 
   const fetchState = useCallback(async () => {
     try {
@@ -34,16 +37,27 @@ export default function App() {
         const h = await window.api.health.status();
         setHealth(h);
       }
-    } catch {
-      // API not available yet
-    }
+    } catch { /* API not available yet */ }
   }, []);
 
   useEffect(() => {
+    checkCredentials();
     fetchState();
     const timer = setInterval(fetchState, 3000);
     return () => clearInterval(timer);
   }, [fetchState]);
+
+  const checkCredentials = async () => {
+    try {
+      if (window.api) {
+        const creds = await window.api.credentials.get();
+        if (!creds.configured) {
+          setShowCredentialSetup(true);
+        }
+      }
+    } catch { /* will show setup on retry */ }
+    setCheckedCreds(true);
+  };
 
   const renderTab = () => {
     switch (activeTab) {
@@ -52,7 +66,7 @@ export default function App() {
       case 'orders': return <OrdersPanel />;
       case 'markets': return <MarketMonitor />;
       case 'trades': return <TradesPanel />;
-      case 'settings': return <SettingsPanel />;
+      case 'settings': return <SettingsPanel onOpenCredentials={() => setShowCredentialSetup(true)} />;
       case 'logs': return <LogsViewer />;
     }
   };
@@ -76,6 +90,10 @@ export default function App() {
         ))}
       </div>
       <div style={styles.content}>{renderTab()}</div>
+
+      {showCredentialSetup && (
+        <CredentialSetup onComplete={() => setShowCredentialSetup(false)} />
+      )}
     </div>
   );
 }
