@@ -375,7 +375,7 @@ function setupIpc(): void {
     }
 
     const baseUrl = kalshiEnv === 'prod'
-      ? 'https://trading-api.kalshi.com/trade-api/v2'
+      ? 'https://api.elections.kalshi.com/trade-api/v2'
       : 'https://demo-api.kalshi.co/trade-api/v2';
 
     const apiPath = '/portfolio/balance';
@@ -410,8 +410,9 @@ function setupIpc(): void {
       }
 
       const errBody = await resp.text().catch(() => '');
+      console.error(`[creds-test] ${resp.status} from ${baseUrl}${apiPath}:`, errBody.slice(0, 500));
       if (resp.status === 401) {
-        return { success: false, message: `Authentication failed (401). Check that your API Key ID and Private Key are correct and match the ${kalshiEnv} environment.` };
+        return { success: false, message: `Auth failed (401) on ${kalshiEnv}. Server: ${baseUrl}. Response: ${errBody.slice(0, 150)}` };
       }
       if (resp.status === 403) {
         return { success: false, message: `Access denied (403). Your API key may not have the required permissions.` };

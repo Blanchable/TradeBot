@@ -1,7 +1,7 @@
 export const KALSHI_REST_DEMO = 'https://demo-api.kalshi.co/trade-api/v2';
-export const KALSHI_REST_PROD = 'https://trading-api.kalshi.com/trade-api/v2';
+export const KALSHI_REST_PROD = 'https://api.elections.kalshi.com/trade-api/v2';
 export const KALSHI_WS_DEMO = 'wss://demo-api.kalshi.co/trade-api/ws/v2';
-export const KALSHI_WS_PROD = 'wss://trading-api.kalshi.com/trade-api/ws/v2';
+export const KALSHI_WS_PROD = 'wss://api.elections.kalshi.com/trade-api/ws/v2';
 
 export const TICK_SIZE_DEFAULT = 1;
 export const MAX_PRICE_CENTS = 99;
