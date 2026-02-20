@@ -16,7 +16,7 @@ interface Window {
     credentials: {
       get: () => Promise<{ apiKeyId: string; apiPrivateKey: string; env: string; configured: boolean }>;
       save: (creds: { apiKeyId: string; apiPrivateKey: string; env: string }) => Promise<{ success: boolean; error?: string }>;
-      test: () => Promise<{ success: boolean; message: string }>;
+      test: (creds?: { apiKeyId: string; apiPrivateKey: string; env: string }) => Promise<{ success: boolean; message: string }>;
     };
     positions: {
       list: () => Promise<any[]>;

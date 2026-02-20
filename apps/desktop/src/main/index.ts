@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { fork, ChildProcess } from 'child_process';
 
 // IPC channels inlined to match preload.ts (preload can't import npm packages)
@@ -215,6 +216,60 @@ function saveCredentials(creds: { apiKeyId: string; apiPrivateKey: string; env: 
   writeEnvFile(existing);
 }
 
+// ── Kalshi request signing ───────────────────────────────────────────────────
+
+function signKalshiRequest(
+  privateKeyB64: string,
+  timestampMs: number,
+  method: string,
+  resourcePath: string
+): string {
+  // Kalshi signing: sign(timestamp_ms + method + path) with the private key
+  const message = String(timestampMs) + method + resourcePath;
+  const messageBuffer = Buffer.from(message);
+
+  // Try Ed25519 / PKCS8 DER first (Kalshi's newer key format)
+  try {
+    const keyObj = crypto.createPrivateKey({
+      key: Buffer.from(privateKeyB64, 'base64'),
+      format: 'der',
+      type: 'pkcs8',
+    });
+    const sig = crypto.sign(null, messageBuffer, keyObj);
+    return sig.toString('base64');
+  } catch { /* not DER/PKCS8, try next */ }
+
+  // Try PEM format (if user pasted a full PEM key)
+  if (privateKeyB64.includes('BEGIN')) {
+    try {
+      const keyObj = crypto.createPrivateKey(privateKeyB64);
+      const sig = crypto.sign(null, messageBuffer, keyObj);
+      return sig.toString('base64');
+    } catch { /* not PEM, try next */ }
+  }
+
+  // Try RSA PKCS8 PEM wrapping
+  try {
+    const pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyB64}\n-----END PRIVATE KEY-----`;
+    const keyObj = crypto.createPrivateKey(pem);
+    const sig = crypto.sign(null, messageBuffer, keyObj);
+    return sig.toString('base64');
+  } catch { /* not RSA PEM, try next */ }
+
+  // Try RSA with SHA256
+  try {
+    const pem = `-----BEGIN PRIVATE KEY-----\n${privateKeyB64}\n-----END PRIVATE KEY-----`;
+    const signer = crypto.createSign('SHA256');
+    signer.update(messageBuffer);
+    return signer.sign(pem, 'base64');
+  } catch { /* try HMAC fallback */ }
+
+  // Fallback: HMAC-SHA256 (some older Kalshi integrations)
+  const hmac = crypto.createHmac('sha256', privateKeyB64);
+  hmac.update(messageBuffer);
+  return hmac.digest('base64');
+}
+
 // ── IPC Setup ───────────────────────────────────────────────────────────────
 
 function setupIpc(): void {
@@ -273,22 +328,73 @@ function setupIpc(): void {
     }
   });
 
-  ipcMain.handle(CH.CREDENTIALS_TEST, async () => {
-    const envVars = parseEnvFile();
-    const apiKey = envVars['KALSHI_API_KEY_ID'] || '';
-    const kalshiEnv = envVars['KALSHI_ENV'] || 'demo';
-    if (!apiKey || apiKey === 'your_api_key_here') {
-      return { success: false, message: 'API key not configured' };
+  ipcMain.handle(CH.CREDENTIALS_TEST, async (_event, creds?) => {
+    // Accept credentials directly from the UI (before save) or fall back to .env
+    let apiKeyId: string;
+    let privateKey: string;
+    let kalshiEnv: string;
+
+    if (creds && creds.apiKeyId && creds.apiPrivateKey) {
+      apiKeyId = creds.apiKeyId;
+      privateKey = creds.apiPrivateKey;
+      kalshiEnv = creds.env || 'demo';
+    } else {
+      const envVars = parseEnvFile();
+      apiKeyId = envVars['KALSHI_API_KEY_ID'] || '';
+      privateKey = envVars['KALSHI_API_PRIVATE_KEY'] || '';
+      kalshiEnv = envVars['KALSHI_ENV'] || 'demo';
     }
+
+    if (!apiKeyId || apiKeyId === 'your_api_key_here') {
+      return { success: false, message: 'API Key ID is empty' };
+    }
+    if (!privateKey || privateKey === 'your_private_key_here') {
+      return { success: false, message: 'Private Key is empty' };
+    }
+
     const baseUrl = kalshiEnv === 'prod'
       ? 'https://trading-api.kalshi.com/trade-api/v2'
       : 'https://demo-api.kalshi.co/trade-api/v2';
+
+    const apiPath = '/portfolio/balance';
+    const method = 'GET';
+    const timestampMs = Date.now();
+
+    let signature: string;
     try {
-      const resp = await fetch(`${baseUrl}/exchange/status`);
+      signature = signKalshiRequest(privateKey, timestampMs, method, '/trade-api/v2' + apiPath);
+    } catch (err: any) {
+      return { success: false, message: `Key signing failed: ${err.message}. Check that your private key is valid.` };
+    }
+
+    try {
+      const resp = await fetch(`${baseUrl}${apiPath}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'KALSHI-ACCESS-KEY': apiKeyId,
+          'KALSHI-ACCESS-SIGNATURE': signature,
+          'KALSHI-ACCESS-TIMESTAMP': String(timestampMs),
+        },
+      });
+
       if (resp.ok) {
-        return { success: true, message: `Connected to Kalshi ${kalshiEnv} API` };
+        const data = await resp.json() as any;
+        const balanceCents = data.balance ?? 0;
+        return {
+          success: true,
+          message: `Connected to Kalshi ${kalshiEnv}. Balance: $${(balanceCents / 100).toFixed(2)}`,
+        };
       }
-      return { success: false, message: `API returned ${resp.status}` };
+
+      const errBody = await resp.text().catch(() => '');
+      if (resp.status === 401) {
+        return { success: false, message: `Authentication failed (401). Check that your API Key ID and Private Key are correct and match the ${kalshiEnv} environment.` };
+      }
+      if (resp.status === 403) {
+        return { success: false, message: `Access denied (403). Your API key may not have the required permissions.` };
+      }
+      return { success: false, message: `API returned ${resp.status}: ${errBody.slice(0, 200)}` };
     } catch (err: any) {
       return { success: false, message: `Connection failed: ${err.message}` };
     }

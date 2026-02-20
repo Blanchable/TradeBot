@@ -47,7 +47,8 @@ const api = {
     get: () => ipcRenderer.invoke(CH.CREDENTIALS_GET),
     save: (creds: { apiKeyId: string; apiPrivateKey: string; env: string }) =>
       ipcRenderer.invoke(CH.CREDENTIALS_SAVE, creds),
-    test: () => ipcRenderer.invoke(CH.CREDENTIALS_TEST),
+    test: (creds?: { apiKeyId: string; apiPrivateKey: string; env: string }) =>
+      ipcRenderer.invoke(CH.CREDENTIALS_TEST, creds),
   },
   positions: {
     list: () => ipcRenderer.invoke(CH.POSITIONS_LIST),

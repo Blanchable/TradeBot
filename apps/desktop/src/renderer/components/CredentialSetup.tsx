@@ -60,10 +60,22 @@ export default function CredentialSetup({ onComplete, forceShow }: CredentialSet
 
   const handleTest = async () => {
     if (!window.api) return;
+    if (!apiKeyId.trim()) {
+      setTestResult({ success: false, message: 'Enter your API Key ID first' });
+      return;
+    }
+    if (!apiPrivateKey.trim()) {
+      setTestResult({ success: false, message: 'Enter your Private Key first' });
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await window.api.credentials.test();
+      const result = await window.api.credentials.test({
+        apiKeyId: apiKeyId.trim(),
+        apiPrivateKey: apiPrivateKey.trim(),
+        env,
+      });
       setTestResult(result);
     } catch (err: any) {
       setTestResult({ success: false, message: err.message || 'Test failed' });
