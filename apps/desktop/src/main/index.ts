@@ -216,6 +216,9 @@ function startBackend(): void {
       NODE_ENV: process.env.NODE_ENV || 'development',
       ELECTRON_RUN_AS_NODE: '1',
       NODE_PATH: nodePaths.join(nodePathSep),
+      BOT_CONFIG_DIR: CONFIG_DIR,
+      BOT_DATA_DIR: DATA_DIR,
+      BOT_ENV_PATH: ENV_PATH,
     },
   });
 

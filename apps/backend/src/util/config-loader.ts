@@ -2,16 +2,29 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppConfig, AppConfigSchema } from '@kalshi-bot/shared';
 
-const ROOT = path.resolve(__dirname, '../../../../');
+// Config dir: prefer env var from Electron, fall back to repo root
+function resolveConfigDir(): string {
+  if (process.env.BOT_CONFIG_DIR && fs.existsSync(process.env.BOT_CONFIG_DIR)) {
+    return process.env.BOT_CONFIG_DIR;
+  }
+  // Walk up from __dirname to find config/default.json
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, 'config', 'default.json');
+    if (fs.existsSync(candidate)) return path.join(dir, 'config');
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(__dirname, '../../../../config');
+}
+
+const CONFIG_DIR = resolveConfigDir();
 
 function deepMerge(target: any, source: any): any {
   const result = { ...target };
   for (const key of Object.keys(source)) {
-    if (
-      source[key] &&
-      typeof source[key] === 'object' &&
-      !Array.isArray(source[key])
-    ) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
       result[key] = deepMerge(result[key] || {}, source[key]);
     } else {
       result[key] = source[key];
@@ -20,31 +33,39 @@ function deepMerge(target: any, source: any): any {
   return result;
 }
 
+function readJsonSafe(filePath: string): any {
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    }
+  } catch { /* skip */ }
+  return null;
+}
+
 export function loadConfig(env?: string): AppConfig {
-  const defaultPath = path.join(ROOT, 'config', 'default.json');
-  const defaultRaw = JSON.parse(fs.readFileSync(defaultPath, 'utf-8'));
+  console.log('[config-loader] Config dir:', CONFIG_DIR);
 
-  let envRaw = {};
+  const defaultRaw = readJsonSafe(path.join(CONFIG_DIR, 'default.json'));
+
+  if (!defaultRaw) {
+    console.error('[config-loader] default.json not found in', CONFIG_DIR);
+    console.error('[config-loader] Using hardcoded defaults');
+    return getHardcodedDefaults();
+  }
+
   const configEnv = env || process.env.NODE_ENV || 'dev';
-  const envPath = path.join(ROOT, 'config', `${configEnv}.json`);
-  if (fs.existsSync(envPath)) {
-    envRaw = JSON.parse(fs.readFileSync(envPath, 'utf-8'));
-  }
-
-  let overrides = {};
-  const overridePath = path.join(ROOT, 'config', 'user-overrides.json');
-  if (fs.existsSync(overridePath)) {
-    overrides = JSON.parse(fs.readFileSync(overridePath, 'utf-8'));
-  }
+  const envName = configEnv === 'production' ? 'prod' : 'dev';
+  const envRaw = readJsonSafe(path.join(CONFIG_DIR, `${envName}.json`)) || {};
+  const overrides = readJsonSafe(path.join(CONFIG_DIR, 'user-overrides.json')) || {};
 
   let merged = deepMerge(defaultRaw, envRaw);
   merged = deepMerge(merged, overrides);
 
+  // Apply environment variable overrides for credentials
   if (process.env.KALSHI_API_KEY_ID) {
     merged.kalshi = merged.kalshi || {};
     merged.kalshi.apiKeyId = process.env.KALSHI_API_KEY_ID;
   }
-  // Support private key from file path (preferred) or inline
   if (process.env.KALSHI_PRIVATE_KEY_PATH) {
     const keyPath = process.env.KALSHI_PRIVATE_KEY_PATH;
     if (fs.existsSync(keyPath)) {
@@ -63,11 +84,29 @@ export function loadConfig(env?: string): AppConfig {
   return AppConfigSchema.parse(merged);
 }
 
+function getHardcodedDefaults(): AppConfig {
+  return AppConfigSchema.parse({
+    kalshi: {
+      env: process.env.KALSHI_ENV || 'demo',
+      restBaseUrl: 'https://demo-api.kalshi.co/trade-api/v2',
+      wsUrl: 'wss://demo-api.kalshi.co/trade-api/ws/v2',
+      apiKeyId: process.env.KALSHI_API_KEY_ID || 'not-set',
+      apiPrivateKey: process.env.KALSHI_API_PRIVATE_KEY || 'not-set',
+    },
+    marketUniverse: {},
+    strategy: {},
+    execution: {},
+    risk: {},
+    feeModel: {},
+    telemetry: {},
+  });
+}
+
 export function saveUserOverrides(partial: Partial<AppConfig>): void {
-  const overridePath = path.join(ROOT, 'config', 'user-overrides.json');
+  const overridePath = path.join(CONFIG_DIR, 'user-overrides.json');
   let existing: any = {};
   if (fs.existsSync(overridePath)) {
-    existing = JSON.parse(fs.readFileSync(overridePath, 'utf-8'));
+    try { existing = JSON.parse(fs.readFileSync(overridePath, 'utf-8')); } catch { /* skip */ }
   }
   const merged = deepMerge(existing, partial);
   fs.writeFileSync(overridePath, JSON.stringify(merged, null, 2), 'utf-8');

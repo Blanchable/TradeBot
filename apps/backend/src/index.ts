@@ -2,8 +2,9 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const ROOT = path.resolve(__dirname, '../../..');
-dotenv.config({ path: path.join(ROOT, '.env') });
+const envPath = process.env.BOT_ENV_PATH || path.resolve(__dirname, '../../../.env');
+dotenv.config({ path: envPath });
+console.log('[backend] .env path:', envPath, 'exists:', fs.existsSync(envPath));
 
 // Support KALSHI_PRIVATE_KEY_PATH from .env
 if (process.env.KALSHI_PRIVATE_KEY_PATH && fs.existsSync(process.env.KALSHI_PRIVATE_KEY_PATH)) {
@@ -126,10 +127,10 @@ async function main(): Promise<void> {
   } catch (err: any) {
     logger.error(MODULE, `Config load failed: ${err.message}`);
     sendToParent({ type: 'error', data: `Config load failed: ${err.message}` });
-    // Use absolute minimum defaults to at least start
     const { AppConfigSchema } = require('@kalshi-bot/shared');
     config = AppConfigSchema.parse({
       kalshi: { env: 'demo', restBaseUrl: 'https://demo-api.kalshi.co/trade-api/v2', wsUrl: 'wss://demo-api.kalshi.co/trade-api/ws/v2', apiKeyId: 'none', apiPrivateKey: 'none' },
+      marketUniverse: {}, strategy: {}, execution: {}, risk: {}, feeModel: {}, telemetry: {},
     });
   }
 

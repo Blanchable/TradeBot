@@ -4,7 +4,25 @@ import * as fs from 'fs';
 import { logger } from '../util/logger';
 
 const MODULE = 'storage';
-const DATA_DIR = path.resolve(__dirname, '../../../../data');
+
+function resolveDataDir(): string {
+  if (process.env.BOT_DATA_DIR) return process.env.BOT_DATA_DIR;
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
+        if (pkg.name === 'kalshi-trend-bot') return path.join(dir, 'data');
+      } catch {}
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(__dirname, '../../../../data');
+}
+
+const DATA_DIR = resolveDataDir();
 
 let db: Database.Database | null = null;
 
