@@ -1,0 +1,27 @@
+{
+  "name": "kalshi-trend-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kalshi Trend Trader Bot - Buy Low, Sell Higher",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @kalshi-bot/backend --filter @kalshi-bot/desktop dev",
+    "backend:dev": "pnpm --filter @kalshi-bot/backend dev",
+    "desktop:dev": "pnpm --filter @kalshi-bot/desktop dev",
+    "build": "pnpm --filter @kalshi-bot/shared build && pnpm --filter @kalshi-bot/backend build && pnpm --filter @kalshi-bot/desktop build",
+    "test": "pnpm --recursive test",
+    "lint": "pnpm --recursive lint",
+    "format": "prettier --write \"**/*.{ts,tsx,json,css}\"",
+    "clean": "pnpm --recursive exec -- rm -rf dist node_modules",
+    "db:migrate": "pnpm --filter @kalshi-bot/backend db:migrate"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild"
+    ]
+  }
+}

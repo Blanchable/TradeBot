@@ -1,0 +1,70 @@
+{
+  "kalshi": {
+    "env": "demo",
+    "restBaseUrl": "https://demo-api.kalshi.co/trade-api/v2",
+    "wsUrl": "wss://demo-api.kalshi.co/trade-api/ws/v2",
+    "apiKeyId": "",
+    "apiPrivateKey": ""
+  },
+  "marketUniverse": {
+    "marketStatusFilter": "open",
+    "minVolume24h": 200,
+    "minLiquidity": 1000,
+    "minOpenInterest": 100,
+    "maxSpreadCents": 5,
+    "excludeMVE": true,
+    "maxMarketsTracked": 10,
+    "scanIntervalSeconds": 60,
+    "minMinutesToClose": 30,
+    "hysteresisDropFactor": 0.7
+  },
+  "strategy": {
+    "candleIntervalSeconds": 60,
+    "breakoutLookbackMinutes": 30,
+    "emaFast": 9,
+    "emaSlow": 21,
+    "atrPeriod": 14,
+    "atrStopMultiplier": 1.5,
+    "tapeConfirmWindowMinutes": 5,
+    "tapeConfirmMultiplier": 2.0,
+    "minExpectedMoveCents": 5,
+    "signalCooldownSeconds": 180,
+    "breakoutBufferCents": 1
+  },
+  "execution": {
+    "orderTypeEntry": "limit",
+    "orderTypeExit": "limit",
+    "entryPatienceSeconds": 20,
+    "cancelReplaceMaxCycles": 2,
+    "maxSlippageCents": 2,
+    "rejectOnSpreadWidenCents": 8,
+    "flattenOnDisconnect": true,
+    "emergencyMarketOrderEnabled": false
+  },
+  "risk": {
+    "bankrollUSD": 200,
+    "maxRiskPerTradeUSD": 4,
+    "maxDailyLossUSD": 15,
+    "maxConcurrentPositions": 2,
+    "maxExposurePerCategoryUSD": 60,
+    "cooldownAfterStopSeconds": 300,
+    "timeStopMinutes": 45,
+    "minRMultipleForPartial": 1.0,
+    "partialTakePercent": 50,
+    "trailStopAtrMultiplier": 1.0,
+    "minContracts": 1,
+    "maxContracts": 20,
+    "flattenOnDailyLossHit": true
+  },
+  "feeModel": {
+    "feeSchedule": "general",
+    "feeCoefficient": 0.07,
+    "feeRoundingRule": "ceil",
+    "includeFeeInMinimumMove": true
+  },
+  "telemetry": {
+    "logLevel": "info",
+    "persistLogsToDB": true,
+    "exportDailyCSV": true
+  }
+}
