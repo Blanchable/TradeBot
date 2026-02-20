@@ -201,7 +201,15 @@ if "%CHOICE%"=="1" (
         pause
         exit /b 1
     )
-    echo [OK] Code build complete. Creating installer...
+    echo [OK] Code build complete. Preparing backend runtime...
+    call pnpm --filter @kalshi-bot/desktop prepare:backend-runtime
+    if !errorlevel! neq 0 (
+        echo [FAIL] Backend runtime preparation failed
+        echo [FAIL] Backend runtime preparation failed >> "%LOG_FILE%"
+        pause
+        exit /b 1
+    )
+    echo [OK] Backend runtime prepared. Creating installer...
     set "CSC_IDENTITY_AUTO_DISCOVERY=false"
     set "WIN_CSC_LINK="
     if exist "%LOCALAPPDATA%\electron-builder\Cache\winCodeSign" (
