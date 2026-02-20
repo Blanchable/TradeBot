@@ -44,7 +44,14 @@ export function loadConfig(env?: string): AppConfig {
     merged.kalshi = merged.kalshi || {};
     merged.kalshi.apiKeyId = process.env.KALSHI_API_KEY_ID;
   }
-  if (process.env.KALSHI_API_PRIVATE_KEY) {
+  // Support private key from file path (preferred) or inline
+  if (process.env.KALSHI_PRIVATE_KEY_PATH) {
+    const keyPath = process.env.KALSHI_PRIVATE_KEY_PATH;
+    if (fs.existsSync(keyPath)) {
+      merged.kalshi = merged.kalshi || {};
+      merged.kalshi.apiPrivateKey = fs.readFileSync(keyPath, 'utf-8').trim();
+    }
+  } else if (process.env.KALSHI_API_PRIVATE_KEY) {
     merged.kalshi = merged.kalshi || {};
     merged.kalshi.apiPrivateKey = process.env.KALSHI_API_PRIVATE_KEY;
   }

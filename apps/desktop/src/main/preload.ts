@@ -15,6 +15,7 @@ const CH = {
   CREDENTIALS_GET: 'credentials:get',
   CREDENTIALS_SAVE: 'credentials:save',
   CREDENTIALS_TEST: 'credentials:test',
+  CREDENTIALS_BROWSE_KEY: 'credentials:browse-key',
   POSITIONS_LIST: 'positions:list',
   POSITIONS_CLOSE: 'positions:close',
   ORDERS_LIST: 'orders:list',
@@ -49,6 +50,7 @@ const api = {
       ipcRenderer.invoke(CH.CREDENTIALS_SAVE, creds),
     test: (creds?: { apiKeyId: string; apiPrivateKey: string; env: string }) =>
       ipcRenderer.invoke(CH.CREDENTIALS_TEST, creds),
+    browseKeyFile: () => ipcRenderer.invoke(CH.CREDENTIALS_BROWSE_KEY),
   },
   positions: {
     list: () => ipcRenderer.invoke(CH.POSITIONS_LIST),

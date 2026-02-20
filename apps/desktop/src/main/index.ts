@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
@@ -18,6 +18,7 @@ const CH = {
   CREDENTIALS_GET: 'credentials:get',
   CREDENTIALS_SAVE: 'credentials:save',
   CREDENTIALS_TEST: 'credentials:test',
+  CREDENTIALS_BROWSE_KEY: 'credentials:browse-key',
   POSITIONS_LIST: 'positions:list',
   POSITIONS_CLOSE: 'positions:close',
   ORDERS_LIST: 'orders:list',
@@ -200,17 +201,44 @@ function writeEnvFile(values: Record<string, string>): void {
 function getCredentials(): { apiKeyId: string; apiPrivateKey: string; env: string; configured: boolean } {
   const envVars = parseEnvFile();
   const apiKeyId = envVars['KALSHI_API_KEY_ID'] || '';
-  const apiPrivateKey = envVars['KALSHI_API_PRIVATE_KEY'] || '';
   const env = envVars['KALSHI_ENV'] || 'demo';
-  const configured = !!(apiKeyId && apiKeyId !== 'your_api_key_here' && apiPrivateKey && apiPrivateKey !== 'your_private_key_here');
-  return { apiKeyId, apiPrivateKey: configured ? '••••••••' : '', env, configured };
+  // Check if the key file path is stored and the file exists
+  const keyPath = envVars['KALSHI_PRIVATE_KEY_PATH'] || '';
+  const hasKeyFile = !!(keyPath && fs.existsSync(keyPath));
+  // Or check inline key
+  const inlineKey = envVars['KALSHI_API_PRIVATE_KEY'] || '';
+  const hasInlineKey = !!(inlineKey && inlineKey !== 'your_private_key_here' && inlineKey.length > 20);
+  const configured = !!(apiKeyId && apiKeyId !== 'your_api_key_here' && (hasKeyFile || hasInlineKey));
+  return { apiKeyId, apiPrivateKey: configured ? '(key on file)' : '', env, configured };
+}
+
+function loadPrivateKeyContent(): string {
+  const envVars = parseEnvFile();
+  // First check for a key file path
+  const keyPath = envVars['KALSHI_PRIVATE_KEY_PATH'] || '';
+  if (keyPath && fs.existsSync(keyPath)) {
+    return fs.readFileSync(keyPath, 'utf-8').trim();
+  }
+  // Fall back to inline key
+  return envVars['KALSHI_API_PRIVATE_KEY'] || '';
 }
 
 function saveCredentials(creds: { apiKeyId: string; apiPrivateKey: string; env: string }): void {
+  const pemContent = creds.apiPrivateKey.trim();
+
+  // Save the PEM key to a dedicated file in the data directory
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  const keyFilePath = path.join(DATA_DIR, 'kalshi-private.key');
+  fs.writeFileSync(keyFilePath, pemContent, { mode: 0o600 });
+  console.log('[creds] Private key saved to', keyFilePath);
+
+  // Store the path in .env (not the key content -- avoid multi-line .env issues)
   const existing = parseEnvFile();
   existing['KALSHI_API_KEY_ID'] = creds.apiKeyId;
-  existing['KALSHI_API_PRIVATE_KEY'] = creds.apiPrivateKey;
+  existing['KALSHI_PRIVATE_KEY_PATH'] = keyFilePath;
   existing['KALSHI_ENV'] = creds.env || 'demo';
+  // Clear any old inline key
+  delete existing['KALSHI_API_PRIVATE_KEY'];
   if (!existing['LOG_LEVEL']) existing['LOG_LEVEL'] = 'info';
   if (!existing['NODE_ENV']) existing['NODE_ENV'] = 'development';
   writeEnvFile(existing);
@@ -335,7 +363,7 @@ function setupIpc(): void {
     } else {
       const envVars = parseEnvFile();
       apiKeyId = envVars['KALSHI_API_KEY_ID'] || '';
-      privateKey = envVars['KALSHI_API_PRIVATE_KEY'] || '';
+      privateKey = loadPrivateKeyContent();
       kalshiEnv = envVars['KALSHI_ENV'] || 'demo';
     }
 
@@ -391,6 +419,27 @@ function setupIpc(): void {
       return { success: false, message: `API returned ${resp.status}: ${errBody.slice(0, 200)}` };
     } catch (err: any) {
       return { success: false, message: `Connection failed: ${err.message}` };
+    }
+  });
+
+  ipcMain.handle(CH.CREDENTIALS_BROWSE_KEY, async () => {
+    if (!mainWindow) return { success: false, content: '' };
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select your Kalshi private key file',
+      filters: [
+        { name: 'Key Files', extensions: ['key', 'pem'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, content: '' };
+    }
+    try {
+      const content = fs.readFileSync(result.filePaths[0], 'utf-8');
+      return { success: true, content: content.trim(), path: result.filePaths[0] };
+    } catch (err: any) {
+      return { success: false, content: '', error: err.message };
     }
   });
 

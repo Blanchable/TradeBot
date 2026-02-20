@@ -17,6 +17,7 @@ interface Window {
       get: () => Promise<{ apiKeyId: string; apiPrivateKey: string; env: string; configured: boolean }>;
       save: (creds: { apiKeyId: string; apiPrivateKey: string; env: string }) => Promise<{ success: boolean; error?: string }>;
       test: (creds?: { apiKeyId: string; apiPrivateKey: string; env: string }) => Promise<{ success: boolean; message: string }>;
+      browseKeyFile: () => Promise<{ success: boolean; content: string; path?: string; error?: string }>;
     };
     positions: {
       list: () => Promise<any[]>;
