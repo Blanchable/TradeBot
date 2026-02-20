@@ -212,8 +212,22 @@ if "%CHOICE%"=="1" (
         pause
         exit /b 1
     )
-    echo [OK] Production build complete
-    echo Check /apps/desktop/release for the installer.
+    echo [OK] Code build complete. Creating installer...
+    set "CSC_IDENTITY_AUTO_DISCOVERY=false"
+    set "WIN_CSC_LINK="
+    if exist "%LOCALAPPDATA%\electron-builder\Cache\winCodeSign" (
+        rmdir /s /q "%LOCALAPPDATA%\electron-builder\Cache\winCodeSign" 2>nul
+    )
+    cd /d "%ROOT%\apps\desktop"
+    call npx electron-builder --win --config.win.signAndEditExecutable=false
+    if !errorlevel! neq 0 (
+        echo [WARN] Installer packaging had issues. You can still run directly:
+        echo        cd apps\desktop ^&^& npx electron .
+        echo [WARN] Installer failed >> "%LOG_FILE%"
+    ) else (
+        echo [OK] Installer created in apps\desktop\release\
+        echo [OK] Installer created >> "%LOG_FILE%"
+    )
 ) else (
     echo.
     echo  Setup complete. Run scripts\run-dev.bat to start later.

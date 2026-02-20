@@ -31,16 +31,23 @@
     "lightweight-charts": "^4.1.0",
     "lucide-react": "^0.300.0"
   },
+  "description": "Kalshi Trend Trader - Desktop trading bot",
+  "author": "Kalshi Trend Trader",
   "build": {
     "appId": "com.kalshi-bot.desktop",
     "productName": "Kalshi Trend Trader",
+    "forceCodeSigning": false,
     "win": {
-      "target": ["nsis"],
-      "icon": "assets/icon.ico"
+      "target": ["nsis", "portable"],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "KalshiTrendTrader-portable.exe"
     },
     "files": [
       "dist/**/*",
