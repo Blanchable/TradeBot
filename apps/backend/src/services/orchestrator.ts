@@ -78,12 +78,13 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   async start(): Promise<void> {
-    if (this.state !== 'INIT' && this.state !== 'READY' && this.state !== 'ERROR') {
-      logger.warn(MODULE, 'Cannot start from state ' + this.state);
+    const currentState = this.state;
+    if (currentState !== 'INIT' && currentState !== 'READY' && currentState !== 'ERROR') {
+      logger.warn(MODULE, 'Cannot start from state ' + currentState);
       return;
     }
 
-    if (this.state === 'INIT') this.setState('CONNECTING');
+    if (currentState === 'INIT') this.setState('CONNECTING');
 
     try {
       const healthy = await this.rest.healthCheck();
