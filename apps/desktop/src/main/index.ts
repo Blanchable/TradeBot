@@ -63,37 +63,37 @@ const REPO_ROOT = findRepoRoot();
 const RESOURCES_PATH = isPackaged ? (process as any).resourcesPath : null;
 const USER_DATA = app.getPath('userData');
 
-// Resolve paths: prefer repo root (dev), fall back to packaged resources, fall back to userData
-function resolvePath(repoPart: string, resourcePart: string, userDataPart?: string): string {
-  if (REPO_ROOT) {
-    const p = path.join(REPO_ROOT, repoPart);
-    if (fs.existsSync(p) || fs.existsSync(path.dirname(p))) return p;
-  }
-  if (RESOURCES_PATH) {
-    const p = path.join(RESOURCES_PATH, resourcePart);
-    if (fs.existsSync(p) || fs.existsSync(path.dirname(p))) return p;
-  }
-  return path.join(USER_DATA, userDataPart || repoPart);
-}
-
-const DATA_DIR = resolvePath('data', 'data', 'data');
-const CONFIG_DIR = resolvePath('config', 'config', 'config');
-const ENV_PATH = resolvePath('.env', '.env', '.env');
+// For installed apps, user data must live in AppData (survives reinstalls).
+// For source repo, use the repo root directly.
+const DATA_DIR = REPO_ROOT ? path.join(REPO_ROOT, 'data') : path.join(USER_DATA, 'data');
+const CONFIG_DIR = REPO_ROOT ? path.join(REPO_ROOT, 'config') : path.join(USER_DATA, 'config');
+const ENV_PATH = REPO_ROOT ? path.join(REPO_ROOT, '.env') : path.join(USER_DATA, '.env');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(CONFIG_DIR)) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  // Copy default config into userData if running from installed app
-  if (RESOURCES_PATH && fs.existsSync(path.join(RESOURCES_PATH, 'config', 'default.json'))) {
+}
+
+// Seed config files from resources into userData if missing
+if (!REPO_ROOT && RESOURCES_PATH) {
+  const resSrc = path.join(RESOURCES_PATH, 'config');
+  if (fs.existsSync(resSrc)) {
     for (const f of ['default.json', 'dev.json', 'prod.json']) {
-      const src = path.join(RESOURCES_PATH, 'config', f);
-      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(CONFIG_DIR, f));
+      const dest = path.join(CONFIG_DIR, f);
+      const src = path.join(resSrc, f);
+      if (!fs.existsSync(dest) && fs.existsSync(src)) fs.copyFileSync(src, dest);
     }
   }
 }
-if (!fs.existsSync(ENV_PATH) && RESOURCES_PATH) {
-  const exSrc = path.join(RESOURCES_PATH, '.env.example');
-  if (fs.existsSync(exSrc)) fs.copyFileSync(exSrc, ENV_PATH);
+// Seed .env from example if missing
+if (!fs.existsSync(ENV_PATH)) {
+  const candidates = [
+    RESOURCES_PATH ? path.join(RESOURCES_PATH, '.env.example') : '',
+    REPO_ROOT ? path.join(REPO_ROOT, '.env.example') : '',
+  ].filter(Boolean);
+  for (const src of candidates) {
+    if (fs.existsSync(src)) { fs.copyFileSync(src, ENV_PATH); break; }
+  }
 }
 
 console.log('[electron-main] Mode:', isPackaged ? 'INSTALLED' : 'DEV');
@@ -286,6 +286,7 @@ function startBackend(): void {
     backendLogs.push({ ts: Date.now(), level: 'error', module: 'electron', message: msg });
     backendReady = false;
     backendState.botState = 'ERROR';
+    showBackendErrorDialog(msg);
   });
 
   backendProcess.on('exit', (code, signal) => {
@@ -295,6 +296,7 @@ function startBackend(): void {
     backendReady = false;
     backendProcess = null;
     backendState.botState = 'ERROR';
+    if (code !== 0) showBackendErrorDialog(msg);
   });
 
   // Periodically request fresh data from backend
@@ -667,6 +669,29 @@ function setupIpc(): void {
 
   ipcMain.handle('open-external', async (_event, url: string) => {
     shell.openExternal(url);
+  });
+}
+
+function showBackendErrorDialog(detail: string): void {
+  if (!mainWindow) return;
+  const isInstalledApp = !REPO_ROOT;
+  const message = isInstalledApp
+    ? 'The backend could not start from the installed app. Native modules (SQLite) require running from the source repository.\n\n' +
+      'To run properly:\n' +
+      '1. Open the source repo folder in a terminal\n' +
+      '2. Run: pnpm --filter @kalshi-bot/shared build\n' +
+      '3. Run: pnpm --filter @kalshi-bot/backend build\n' +
+      '4. Run: pnpm --filter @kalshi-bot/desktop build\n' +
+      '5. Run: cd apps\\desktop && npx electron .\n\n' +
+      'This is needed because SQLite uses native C++ bindings that must match your Node.js version.'
+    : 'The backend process crashed. Check the Logs tab for details.';
+
+  dialog.showMessageBox(mainWindow, {
+    type: 'error',
+    title: 'Backend Error',
+    message: 'Backend failed to start',
+    detail: message + '\n\nError: ' + detail,
+    buttons: ['OK'],
   });
 }
 
