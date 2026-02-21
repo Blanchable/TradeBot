@@ -83,10 +83,12 @@ function createWindow(): void {
     },
   });
 
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+  // Load built files if they exist, otherwise try Vite dev server
+  const builtIndex = path.join(__dirname, '../renderer/index.html');
+  if (fs.existsSync(builtIndex)) {
+    mainWindow.loadFile(builtIndex);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    mainWindow.loadURL('http://localhost:5173');
   }
 
   mainWindow.on('closed', () => {
