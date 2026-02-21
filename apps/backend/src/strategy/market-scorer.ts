@@ -16,8 +16,20 @@ export class MarketScorer {
   }
 
   filterAndRank(markets: Market[]): MarketScore[] {
-    const filtered = markets.filter((m) => this.passesFilters(m));
-    logger.debug(MODULE, `Filtered ${filtered.length} / ${markets.length} markets`);
+    const reasons: Record<string, number> = {};
+    const filtered = markets.filter((m) => {
+      const result = this.checkFilters(m);
+      if (result) {
+        reasons[result] = (reasons[result] || 0) + 1;
+        return false;
+      }
+      return true;
+    });
+
+    if (Object.keys(reasons).length > 0) {
+      logger.info(MODULE, `Filter rejections: ${JSON.stringify(reasons)}`);
+    }
+    logger.info(MODULE, `Passed filters: ${filtered.length} / ${markets.length}`);
 
     const scored: MarketScore[] = filtered.map((m) => {
       const spreadCents = (m.yesAsk && m.yesBid) ? m.yesAsk - m.yesBid : 99;
@@ -45,26 +57,21 @@ export class MarketScorer {
       .slice(0, this.config.maxMarketsTracked);
   }
 
-  private passesFilters(m: Market): boolean {
-    if (m.status !== 'open') return false;
-
-    // Must have actual bid/ask prices
-    if (!m.yesBid || !m.yesAsk || m.yesBid <= 0 || m.yesAsk <= 0) return false;
-
-    if (m.volume24h < this.config.minVolume24h) return false;
-    if (m.openInterest < this.config.minOpenInterest) return false;
-
-    // Liquidity field is deprecated in Kalshi API (returns 0).
-    // Skip liquidity filter -- use volume as proxy instead.
+  private checkFilters(m: Market): string | null {
+    if (m.status !== 'open') return 'not_open';
+    if (!m.yesBid || !m.yesAsk || m.yesBid <= 0 || m.yesAsk <= 0) return 'no_prices';
+    if (m.volume24h < this.config.minVolume24h) return 'low_volume';
+    if (m.openInterest < this.config.minOpenInterest) return 'low_oi';
 
     const spread = m.yesAsk - m.yesBid;
-    if (spread <= 0 || spread > this.config.maxSpreadCents) return false;
+    if (spread <= 0) return 'bad_spread';
+    if (spread > this.config.maxSpreadCents) return 'wide_spread';
 
     const closeMs = new Date(m.closeTime).getTime();
     const minutesToClose = (closeMs - Date.now()) / 60000;
-    if (minutesToClose < this.config.minMinutesToClose) return false;
+    if (minutesToClose < this.config.minMinutesToClose) return 'closing_soon';
 
-    return true;
+    return null;
   }
 
   private computeScore(
