@@ -76,10 +76,20 @@ export function loadConfig(env?: string): AppConfig {
     merged.kalshi = merged.kalshi || {};
     merged.kalshi.apiPrivateKey = process.env.KALSHI_API_PRIVATE_KEY;
   }
-  if (process.env.KALSHI_ENV) {
-    merged.kalshi = merged.kalshi || {};
-    merged.kalshi.env = process.env.KALSHI_ENV;
+  // KALSHI_ENV controls which API endpoints to use
+  const kalshiEnv = process.env.KALSHI_ENV || merged.kalshi?.env || 'demo';
+  merged.kalshi = merged.kalshi || {};
+  merged.kalshi.env = kalshiEnv;
+
+  if (kalshiEnv === 'prod') {
+    merged.kalshi.restBaseUrl = 'https://api.elections.kalshi.com/trade-api/v2';
+    merged.kalshi.wsUrl = 'wss://api.elections.kalshi.com/trade-api/ws/v2';
+  } else {
+    merged.kalshi.restBaseUrl = 'https://demo-api.kalshi.co/trade-api/v2';
+    merged.kalshi.wsUrl = 'wss://demo-api.kalshi.co/trade-api/ws/v2';
   }
+
+  console.log(`[config-loader] Env: ${kalshiEnv}, REST: ${merged.kalshi.restBaseUrl}, WS: ${merged.kalshi.wsUrl}`);
 
   return AppConfigSchema.parse(merged);
 }
