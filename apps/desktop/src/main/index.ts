@@ -509,6 +509,8 @@ function setupIpc(): void {
   ipcMain.handle(CH.CREDENTIALS_SAVE, async (_event, creds) => {
     try {
       saveCredentials(creds);
+      // Restart backend so it picks up the new credentials
+      restartBackend();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -638,6 +640,31 @@ function showBackendErrorDialog(detail: string): void {
     detail: 'Check the Logs tab for details.\n\nError: ' + detail,
     buttons: ['OK'],
   });
+}
+
+function stopBackend(): void {
+  if (backendProcess && backendProcess.connected) {
+    backendProcess.removeAllListeners();
+    backendProcess.kill();
+    backendProcess = null;
+  }
+  backendReady = false;
+  backendState = {
+    botState: 'INIT',
+    health: { wsConnected: false, restAlive: false, botState: 'INIT', uptime: 0 },
+    positions: [],
+  };
+  backendOrders = [];
+  backendMarkets = [];
+  backendTrades = [];
+  backendPnl = [];
+  console.log('[electron-main] Backend stopped');
+}
+
+function restartBackend(): void {
+  console.log('[electron-main] Restarting backend...');
+  stopBackend();
+  startBackend();
 }
 
 function sendToBackend(message: any): void {
