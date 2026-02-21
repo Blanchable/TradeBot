@@ -15,28 +15,18 @@ A production-grade trend-following trading bot for [Kalshi](https://kalshi.com) 
 
 ## Quick Start (Windows)
 
-1. **Double-click** `scripts/setup.bat`
-2. Follow the prompts to install dependencies and configure API credentials
-3. Choose Dev or Production mode
+**Double-click `START.bat`** -- that's it. It installs dependencies, builds everything, and launches the GUI. API keys are configured inside the app.
 
-## Quick Start (Dev - Any OS)
+Requires [Node.js](https://nodejs.org/) to be installed first.
+
+## Quick Start (Mac/Linux)
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Build shared package
 pnpm --filter @kalshi-bot/shared build
-
-# Initialize database
-pnpm db:migrate
-
-# Copy and edit environment file
-cp .env.example .env
-# Edit .env with your Kalshi API credentials
-
-# Start development
-pnpm dev
+pnpm --filter @kalshi-bot/backend build
+pnpm --filter @kalshi-bot/desktop build
+cd apps/desktop && npx electron .
 ```
 
 ## Project Structure
