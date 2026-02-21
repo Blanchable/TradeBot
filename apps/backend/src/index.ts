@@ -90,7 +90,8 @@ async function handleCommand(msg: any): Promise<void> {
 
     case 'get-markets':
       try {
-        sendToParent({ type: 'markets', data: MarketRepo.getAll().slice(0, 50) });
+        const tracked = orchestrator?.getTrackedMarkets() || [];
+        sendToParent({ type: 'markets', data: tracked });
       } catch { sendToParent({ type: 'markets', data: [] }); }
       break;
 

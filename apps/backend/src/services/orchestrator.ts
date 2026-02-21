@@ -164,6 +164,10 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     return this.config;
   }
 
+  getTrackedMarkets() {
+    return this.scanner.getTrackedScores();
+  }
+
   updateConfig(newConfig: AppConfig): void {
     this.config = newConfig;
     this.risk.updateConfig(newConfig);
@@ -205,16 +209,17 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     });
 
     this.ws.on('disconnected', () => {
-      logger.warn(MODULE, 'WS disconnected');
-      if (this.state === 'TRADING') {
-        this.setState('PAUSED');
-        if (this.config.execution.flattenOnDisconnect) {
-          this.flatten().catch((e) => logger.error(MODULE, 'Flatten on disconnect failed', { error: e.message }));
-        }
-      }
+      logger.warn(MODULE, 'WS disconnected, will auto-reconnect');
+      // Don't immediately pause -- the WS client handles reconnection.
+      // Only pause if we stay disconnected for an extended period (handled by health checks).
     });
 
     this.ws.on('connected', () => {
+      logger.info(MODULE, 'WS connected');
+      if (this.state === 'PAUSED') {
+        this.setState('TRADING');
+        this.startTickLoop();
+      }
       this.subscribeToTracked();
     });
   }

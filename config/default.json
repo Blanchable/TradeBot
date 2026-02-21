@@ -8,12 +8,12 @@
   },
   "marketUniverse": {
     "marketStatusFilter": "open",
-    "minVolume24h": 200,
-    "minLiquidity": 1000,
-    "minOpenInterest": 100,
-    "maxSpreadCents": 5,
+    "minVolume24h": 50,
+    "minLiquidity": 0,
+    "minOpenInterest": 10,
+    "maxSpreadCents": 8,
     "excludeMVE": true,
-    "maxMarketsTracked": 10,
+    "maxMarketsTracked": 15,
     "scanIntervalSeconds": 60,
     "minMinutesToClose": 30,
     "hysteresisDropFactor": 0.7
